@@ -4,12 +4,40 @@
   "description": "A lightweight VS Code-style IDE for using Claude Code",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win portable",
+    "dist:installer": "electron-builder --win nsis"
   },
   "author": "",
   "license": "MIT",
+  "build": {
+    "appId": "com.claudeide.app",
+    "productName": "Claude IDE",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "docs/**/*",
+      "!**/*.zip"
+    ],
+    "asarUnpack": [
+      "node_modules/@lydell/node-pty/**"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "Claude-IDE-${version}-portable.exe"
+    }
+  },
   "devDependencies": {
-    "electron": "^33.2.1"
+    "electron": "^33.2.1",
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.198",
