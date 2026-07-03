@@ -27,7 +27,8 @@ npm install      # 최초 1회
 npm start        # 실행
 ```
 
-또는 `start.bat` 더블클릭.
+또는 `start.vbs` 더블클릭 — **cmd(콘솔) 창 없이** 실행됩니다.
+(`start.bat`은 콘솔 창이 함께 뜹니다.)
 
 ## 주요 기능
 
