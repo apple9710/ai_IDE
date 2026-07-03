@@ -27,6 +27,7 @@
       "node_modules/@lydell/node-pty/**"
     ],
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "portable"
       ]
