@@ -6,3 +6,4 @@ out/
 Thumbs.db
 package.zip
 package-lock.zip
+.claude/settings.local.json
