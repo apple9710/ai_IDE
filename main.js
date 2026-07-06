@@ -347,6 +347,24 @@ async function getSdk() {
   return sdkModule;
 }
 
+// Locate the platform-native `claude` binary the SDK ships with. When packaged
+// it lives inside `app.asar`, which the OS cannot execute — electron-builder
+// unpacks it (see asarUnpack), so rewrite the path to `app.asar.unpacked`.
+function claudeExecutablePath() {
+  const bin = 'claude' + (process.platform === 'win32' ? '.exe' : '');
+  try {
+    const p = require.resolve(
+      `@anthropic-ai/claude-agent-sdk-${process.platform}-${process.arch}/${bin}`
+    );
+    return p.replace(
+      `app.asar${path.sep}`,
+      `app.asar.unpacked${path.sep}`
+    );
+  } catch {
+    return undefined; // fall back to the SDK's own resolution (dev / global CLI)
+  }
+}
+
 // Each open project keeps its own Claude session so switching project tabs
 // preserves the running conversation. Keyed by the renderer's projectId.
 const chats = new Map(); // projectId -> { query, input }
@@ -424,6 +442,9 @@ async function startChat(cwd, projectId, opts) {
     includePartialMessages: true,
     stderr: (d) => console.error('[claude]', d),
   };
+  // Point the SDK at the unpacked native binary (required in a packaged build).
+  const exe = claudeExecutablePath();
+  if (exe) options.pathToClaudeCodeExecutable = exe;
   // Model alias ('opus'/'sonnet'/'haiku'/'fable') — omit to use the CLI default.
   if (opts.model) options.model = opts.model;
   // Reasoning effort ('low'|'medium'|'high'|'xhigh'|'max').

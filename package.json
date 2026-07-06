@@ -24,7 +24,8 @@
       "!**/*.zip"
     ],
     "asarUnpack": [
-      "node_modules/@lydell/node-pty/**"
+      "node_modules/@lydell/node-pty/**",
+      "node_modules/@anthropic-ai/claude-agent-sdk-*/**"
     ],
     "win": {
       "icon": "build/icon.ico",
