@@ -35,6 +35,11 @@ const EMPTY_CHAT_HTML =
   '<p>Claude Code에게 무엇이든 물어보세요.</p>' +
   '<p class="chat-empty-sub">현재 폴더에서 파일을 읽고, 수정하고, 명령을 실행할 수 있어요.</p></div>';
 
+const EMPTY_CODEX_HTML =
+  '<div class="chat-empty"><div class="chat-empty-star codex">◆</div>' +
+  '<p>OpenAI Codex에게 무엇이든 물어보세요.</p>' +
+  '<p class="chat-empty-sub">협업 모드에서는 Claude의 계획을 검토하는 역할을 맡아요.</p></div>';
+
 function projectById(id) {
   return projects.find((p) => p.id === id) || null;
 }
@@ -149,6 +154,49 @@ function dirHasChanges(dirPath) {
 }
 
 // ============================================================================
+// Inline SVG icons (Lucide-style line icons — stroke follows CSS `color`)
+// ============================================================================
+const ICON_PATHS = {
+  terminal: '<polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/>',
+  'book-open':
+    '<path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>',
+  pencil:
+    '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
+  search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+  globe:
+    '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+  sparkles:
+    '<path d="m12 3-1.9 5.8a2 2 0 0 1-1.3 1.3L3 12l5.8 1.9a2 2 0 0 1 1.3 1.3L12 21l1.9-5.8a2 2 0 0 1 1.3-1.3L21 12l-5.8-1.9a2 2 0 0 1-1.3-1.3Z"/>',
+  wrench:
+    '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  alert:
+    '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 20h16a2 2 0 0 0 1.73-2Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  folder:
+    '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/>',
+  'folder-open':
+    '<path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/>',
+  file:
+    '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  'file-plus':
+    '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M9 15h6"/><path d="M12 18v-6"/>',
+  'folder-plus':
+    '<path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 10v6"/><path d="M9 13h6"/>',
+  trash:
+    '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+  message: '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>',
+};
+
+function svgIcon(name) {
+  return (
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"' +
+    ' stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    (ICON_PATHS[name] || ICON_PATHS.wrench) +
+    '</svg>'
+  );
+}
+
+// ============================================================================
 // File tree
 // ============================================================================
 const fileTreeEl = document.getElementById('file-tree');
@@ -187,7 +235,7 @@ async function renderDir(dirPath, container, depth) {
     if (entry.isDir) {
       const expanded = expandedPaths.has(entry.path);
       twist.textContent = expanded ? '▼' : '▶';
-      icon.textContent = expanded ? '📂' : '📁';
+      icon.innerHTML = svgIcon(expanded ? 'folder-open' : 'folder');
       // An untracked folder is collapsed by git to its own path, so check both
       // an exact match and any changed descendant.
       if (dirHasChanges(entry.path) || gitState.files[entry.path]) {
@@ -211,7 +259,7 @@ async function renderDir(dirPath, container, depth) {
         const open = childBox.style.display === 'none';
         childBox.style.display = open ? 'block' : 'none';
         twist.textContent = open ? '▼' : '▶';
-        icon.textContent = open ? '📂' : '📁';
+        icon.innerHTML = svgIcon(open ? 'folder-open' : 'folder');
         if (open) {
           expandedPaths.add(entry.path);
           if (!childBox.hasChildNodes())
@@ -222,7 +270,7 @@ async function renderDir(dirPath, container, depth) {
         selectTreeNode(node);
       });
     } else {
-      icon.textContent = '📄';
+      icon.innerHTML = svgIcon('file');
       twist.textContent = '';
       const st = mapStatus(gitState.files[entry.path]);
       node.append(twist, icon, name);
@@ -281,19 +329,22 @@ function showContextMenu(x, y, entry) {
   const items = [];
 
   items.push({
-    label: '📄  새 파일',
+    icon: 'file-plus',
+    label: '새 파일',
     action: () => createEntry(parentDir, false),
   });
   items.push({
-    label: '📁  새 폴더',
+    icon: 'folder-plus',
+    label: '새 폴더',
     action: () => createEntry(parentDir, true),
   });
 
   if (entry.name) {
     items.push({ sep: true });
-    items.push({ label: '✏️  이름 변경', action: () => renameEntry(entry) });
+    items.push({ icon: 'pencil', label: '이름 변경', action: () => renameEntry(entry) });
     items.push({
-      label: '🗑️  삭제',
+      icon: 'trash',
+      label: '삭제',
       danger: true,
       action: () => deleteEntry(entry),
     });
@@ -309,7 +360,7 @@ function showContextMenu(x, y, entry) {
     }
     const el = document.createElement('div');
     el.className = 'ctx-item' + (it.danger ? ' danger' : '');
-    el.textContent = it.label;
+    el.innerHTML = svgIcon(it.icon) + esc(it.label);
     el.addEventListener('click', () => {
       hideContextMenu();
       it.action();
@@ -590,6 +641,10 @@ function makeProject(folder) {
   chatEl.className = 'chat-scroll hidden';
   chatEl.innerHTML = EMPTY_CHAT_HTML;
   chatHost.appendChild(chatEl);
+  const codexChatEl = document.createElement('div');
+  codexChatEl.className = 'chat-scroll codex-scroll hidden';
+  codexChatEl.innerHTML = EMPTY_CODEX_HTML;
+  chatHost.appendChild(codexChatEl);
   return {
     id: 'proj-' + ++projectCounter,
     folder,
@@ -606,6 +661,14 @@ function makeProject(folder) {
     currentAssistant: null,
     toolCards: {},
     chatModel: '',
+    // codex chat state
+    codexChatEl,
+    codexBusy: false,
+    codexCards: {}, // itemId -> { el, stateEl?, bodyEl?, textEl? }
+    // which engine the panel shows for this project ('claude' | 'codex')
+    activeEngine: 'claude',
+    // a collab relay is currently running for this project
+    collabRunning: false,
   };
 }
 
@@ -629,6 +692,7 @@ async function loadActive() {
   for (const pr of projects) {
     for (const t of pr.terminals) t.el.classList.add('hidden');
     pr.chatEl.classList.add('hidden');
+    pr.codexChatEl.classList.add('hidden');
   }
 
   const p = activeProject();
@@ -673,11 +737,10 @@ async function loadActive() {
   renderTermTabs();
   refitActiveTerminal();
 
-  // Chat.
-  p.chatEl.classList.remove('hidden');
-  document.getElementById('chat-model').textContent = p.chatModel || '';
+  // Chat — show the engine this project was last talking to.
+  applyEngineUI(p);
   applyChatBusyUI(p);
-  scrollChat(p);
+  scrollChat(p, activeChatEl(p));
 }
 
 async function switchProject(id) {
@@ -709,6 +772,8 @@ async function closeProject(id) {
 
   // Tear down the project's resources.
   window.api.agentNew(id); // end its Claude session in the main process
+  window.api.codexNew(id); // end its Codex thread too
+  if (p.collabRunning) window.api.collabStop(id);
   for (const t of p.openTabs) {
     if (t.model) t.model.dispose();
     if (t.url) URL.revokeObjectURL(t.url);
@@ -727,6 +792,7 @@ async function closeProject(id) {
     t.el.remove();
   }
   p.chatEl.remove();
+  p.codexChatEl.remove();
 
   const idx = projects.findIndex((x) => x.id === id);
   projects.splice(idx, 1);
@@ -944,17 +1010,27 @@ const btnChat = document.getElementById('btn-chat');
 const chatPanel = document.getElementById('chat-panel');
 const chatResizer = document.getElementById('chat-resizer');
 const modelSelect = document.getElementById('chat-model-select');
+const codexModelSelect = document.getElementById('codex-model-select');
 const effortSelect = document.getElementById('chat-effort-select');
 
 // Chat model / reasoning-effort selection (applied to new sessions; model
 // changes also apply live to a running session). '' model = CLI default.
 let chatModel = '';
+let codexChatModel = '';
 let chatEffort = 'high';
 
 modelSelect.addEventListener('change', () => {
   chatModel = modelSelect.value;
   window.api.setConfig({ chatModel });
   if (activeProjectId) window.api.agentSetModel(activeProjectId, chatModel);
+});
+// Codex 모델 변경은 다음 턴부터 적용 (main이 같은 대화를 새 모델로 이어감).
+codexModelSelect.addEventListener('change', () => {
+  codexChatModel = codexModelSelect.value;
+  window.api.setConfig({ codexModel: codexChatModel });
+  const p = activeProject();
+  if (p && p.activeEngine === 'codex')
+    document.getElementById('chat-model').textContent = codexChatModel;
 });
 effortSelect.addEventListener('change', () => {
   chatEffort = effortSelect.value;
@@ -1109,19 +1185,32 @@ function renderMd(text) {
   html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
   return html;
 }
-function clearEmpty(p) {
-  const empty = p.chatEl.querySelector('.chat-empty');
+function clearEmpty(p, el) {
+  const empty = (el || p.chatEl).querySelector('.chat-empty');
   if (empty) empty.remove();
 }
-function scrollChat(p) {
-  p.chatEl.scrollTop = p.chatEl.scrollHeight;
+function scrollChat(p, el) {
+  const t = el || p.chatEl;
+  t.scrollTop = t.scrollHeight;
 }
 function applyChatBusyUI(p) {
-  chatSend.classList.toggle('hidden', p.chatBusy);
-  chatStop.classList.toggle('hidden', !p.chatBusy);
-  if (p.chatBusy) {
+  if (p.collabRunning) {
+    // 협업 중에는 입력을 살려둔다 — 보내면 다음 Claude 턴에 개입된다.
+    chatSend.classList.remove('hidden');
+    chatStop.classList.remove('hidden');
     chatStatus.classList.remove('hidden');
-    chatStatus.innerHTML = '<span class="spinner"></span> Claude가 작업 중…';
+    chatStatus.innerHTML =
+      '<span class="spinner"></span> 협업 진행 중… (메시지를 보내면 토론에 개입합니다)';
+    return;
+  }
+  const busy = p.activeEngine === 'codex' ? p.codexBusy : p.chatBusy;
+  chatSend.classList.toggle('hidden', busy);
+  chatStop.classList.toggle('hidden', !busy);
+  if (busy) {
+    chatStatus.classList.remove('hidden');
+    chatStatus.innerHTML =
+      '<span class="spinner"></span> ' +
+      (p.activeEngine === 'codex' ? 'Codex가 작업 중…' : 'Claude가 작업 중…');
   } else {
     chatStatus.classList.add('hidden');
   }
@@ -1130,6 +1219,43 @@ function setChatBusy(p, b) {
   p.chatBusy = b;
   if (p.id === activeProjectId) applyChatBusyUI(p);
 }
+function setCodexBusy(p, b) {
+  p.codexBusy = b;
+  if (p.id === activeProjectId) applyChatBusyUI(p);
+}
+
+// ---- engine tabs (Claude / Codex) ------------------------------------------
+const engineClaude = document.getElementById('engine-claude');
+const engineCodex = document.getElementById('engine-codex');
+const chatEngineName = document.getElementById('chat-engine-name');
+
+function activeChatEl(p) {
+  return p.activeEngine === 'codex' ? p.codexChatEl : p.chatEl;
+}
+function applyEngineUI(p) {
+  const codex = p.activeEngine === 'codex';
+  engineClaude.classList.toggle('active', !codex);
+  engineCodex.classList.toggle('active', codex);
+  chatEngineName.textContent = codex ? 'Codex' : 'Claude';
+  document.getElementById('chat-model').textContent =
+    codex ? codexChatModel : p.chatModel || '';
+  // 엔진에 맞는 모델 셀렉터만 노출.
+  document.getElementById('claude-model-field').classList.toggle('hidden', codex);
+  document.getElementById('codex-model-field').classList.toggle('hidden', !codex);
+  p.chatEl.classList.toggle('hidden', codex);
+  p.codexChatEl.classList.toggle('hidden', !codex);
+}
+function switchEngine(engine) {
+  const p = activeProject();
+  if (!p || p.activeEngine === engine) return;
+  p.activeEngine = engine;
+  applyEngineUI(p);
+  applyChatBusyUI(p);
+  scrollChat(p, activeChatEl(p));
+  chatInput.focus();
+}
+engineClaude.addEventListener('click', () => switchEngine('claude'));
+engineCodex.addEventListener('click', () => switchEngine('codex'));
 
 // A hover "복사" button that copies `text` to the OS clipboard.
 function addCopyBtn(msgEl, text) {
@@ -1148,8 +1274,9 @@ function addCopyBtn(msgEl, text) {
   msgEl.appendChild(btn);
 }
 
-function addUserBubble(p, text, images) {
-  clearEmpty(p);
+function addUserBubble(p, text, images, el) {
+  el = el || p.chatEl;
+  clearEmpty(p, el);
   const msg = document.createElement('div');
   msg.className = 'msg user';
   if (text) {
@@ -1170,8 +1297,8 @@ function addUserBubble(p, text, images) {
     msg.appendChild(strip);
   }
   addCopyBtn(msg, text);
-  p.chatEl.appendChild(msg);
-  scrollChat(p);
+  el.appendChild(msg);
+  scrollChat(p, el);
 }
 
 function ensureAssistant(p) {
@@ -1188,16 +1315,16 @@ function ensureAssistant(p) {
 }
 
 const TOOL_ICON = {
-  Bash: '❯',
-  Read: '📖',
-  Edit: '✏️',
-  Write: '✏️',
-  MultiEdit: '✏️',
-  Grep: '🔍',
-  Glob: '🔍',
-  WebFetch: '🌐',
-  WebSearch: '🌐',
-  Task: '✳',
+  Bash: svgIcon('terminal'),
+  Read: svgIcon('book-open'),
+  Edit: svgIcon('pencil'),
+  Write: svgIcon('pencil'),
+  MultiEdit: svgIcon('pencil'),
+  Grep: svgIcon('search'),
+  Glob: svgIcon('search'),
+  WebFetch: svgIcon('globe'),
+  WebSearch: svgIcon('globe'),
+  Task: svgIcon('sparkles'),
 };
 function summarizeInput(input) {
   if (!input || typeof input !== 'object') return '';
@@ -1232,7 +1359,7 @@ function renderToolCard(p, block) {
   const head = document.createElement('div');
   head.className = 'tool-head';
   head.innerHTML =
-    `<span class="tool-ic">${TOOL_ICON[block.name] || '🔧'}</span>` +
+    `<span class="tool-ic">${TOOL_ICON[block.name] || svgIcon('wrench')}</span>` +
     `<span class="tool-name">${esc(block.name)}</span>` +
     `<span class="tool-sub">${esc(summarizeInput(block.input))}</span>` +
     `<span class="tool-state">실행 중…</span>`;
@@ -1284,7 +1411,10 @@ function handleToolResults(p, userMessage) {
     if (block.type !== 'tool_result') continue;
     const entry = p.toolCards[block.tool_use_id];
     if (!entry) continue;
-    entry.stateEl.textContent = block.is_error ? '⚠ 오류' : '✓ 완료';
+    entry.stateEl.classList.add(block.is_error ? 'err' : 'ok');
+    entry.stateEl.innerHTML =
+      svgIcon(block.is_error ? 'alert' : 'check') +
+      (block.is_error ? ' 오류' : ' 완료');
     const text = extractResultText(block.content);
     const pre = document.createElement('pre');
     pre.textContent =
@@ -1408,12 +1538,341 @@ window.api.onAgentClosed((e) => {
   p.currentAssistant = null;
 });
 
+// ============================================================================
+// Codex chat rendering — Codex streams "items"(message/reasoning/command/…)
+// that start, update, and complete; each item id maps to one DOM block.
+// ============================================================================
+const CODEX_ITEM_LABEL = {
+  command_execution: '명령 실행',
+  file_change: '파일 변경',
+  mcp_tool_call: 'MCP 도구',
+  web_search: '웹 검색',
+  todo_list: '할 일',
+};
+
+function codexToolCard(p, item, icon, sub) {
+  const card = document.createElement('div');
+  card.className = 'tool-card';
+  const head = document.createElement('div');
+  head.className = 'tool-head';
+  head.innerHTML =
+    `<span class="tool-ic">${svgIcon(icon)}</span>` +
+    `<span class="tool-name">${esc(CODEX_ITEM_LABEL[item.type] || item.type)}</span>` +
+    `<span class="tool-sub">${esc(sub || '')}</span>` +
+    `<span class="tool-state">실행 중…</span>`;
+  const body = document.createElement('div');
+  body.className = 'tool-body hidden';
+  head.addEventListener('click', () => body.classList.toggle('hidden'));
+  card.append(head, body);
+  return {
+    el: card,
+    body,
+    stateEl: head.querySelector('.tool-state'),
+    subEl: head.querySelector('.tool-sub'),
+  };
+}
+
+function setCodexCardState(entry, status) {
+  if (!entry.stateEl) return;
+  if (status === 'completed') {
+    entry.stateEl.classList.add('ok');
+    entry.stateEl.innerHTML = svgIcon('check') + ' 완료';
+  } else if (status === 'failed') {
+    entry.stateEl.classList.add('err');
+    entry.stateEl.innerHTML = svgIcon('alert') + ' 오류';
+  }
+}
+
+function renderCodexItem(p, item, done) {
+  const el = p.codexChatEl;
+  clearEmpty(p, el);
+  let entry = p.codexCards[item.id];
+
+  switch (item.type) {
+    case 'agent_message': {
+      if (!entry) {
+        const msg = document.createElement('div');
+        msg.className = 'msg assistant';
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        msg.appendChild(bubble);
+        el.appendChild(msg);
+        entry = p.codexCards[item.id] = { el: msg, textEl: bubble };
+      }
+      if (done) {
+        entry.textEl.innerHTML = renderMd(item.text || '');
+        addCopyBtn(entry.el, item.text || '');
+      } else {
+        entry.textEl.textContent = item.text || '';
+      }
+      break;
+    }
+    case 'reasoning': {
+      if (!entry) {
+        const t = document.createElement('div');
+        t.className = 'thinking';
+        el.appendChild(t);
+        entry = p.codexCards[item.id] = { el: t, textEl: t };
+      }
+      entry.textEl.textContent = item.text || '';
+      break;
+    }
+    case 'command_execution': {
+      if (!entry) {
+        entry = p.codexCards[item.id] = codexToolCard(p, item, 'terminal', item.command);
+        el.appendChild(entry.el);
+      }
+      entry.subEl.textContent = item.command || '';
+      setCodexCardState(entry, item.status);
+      if (done && !entry.gotOutput) {
+        entry.gotOutput = true;
+        const pre = document.createElement('pre');
+        const out = item.aggregated_output || '(출력 없음)';
+        pre.textContent =
+          '결과:\n' + (out.length > 4000 ? out.slice(0, 4000) + '\n…(생략)' : out);
+        entry.body.appendChild(pre);
+      }
+      break;
+    }
+    case 'file_change': {
+      const sub = (item.changes || [])
+        .map((ch) => (ch.kind === 'add' ? 'A' : ch.kind === 'delete' ? 'D' : 'M') + ' ' + ch.path)
+        .join(' · ');
+      if (!entry) {
+        entry = p.codexCards[item.id] = codexToolCard(p, item, 'pencil', sub);
+        el.appendChild(entry.el);
+      }
+      entry.subEl.textContent = sub;
+      setCodexCardState(entry, item.status);
+      break;
+    }
+    case 'mcp_tool_call': {
+      const sub = `${item.server || ''}.${item.tool || ''}`;
+      if (!entry) {
+        entry = p.codexCards[item.id] = codexToolCard(p, item, 'wrench', sub);
+        el.appendChild(entry.el);
+      }
+      setCodexCardState(entry, item.status);
+      break;
+    }
+    case 'web_search': {
+      if (!entry) {
+        entry = p.codexCards[item.id] = codexToolCard(p, item, 'globe', item.query);
+        el.appendChild(entry.el);
+      }
+      entry.subEl.textContent = item.query || '';
+      if (done) setCodexCardState(entry, 'completed');
+      break;
+    }
+    case 'todo_list': {
+      const items = item.items || [];
+      const doneCount = items.filter((t) => t.completed).length;
+      if (!entry) {
+        entry = p.codexCards[item.id] = codexToolCard(p, item, 'sparkles', '');
+        el.appendChild(entry.el);
+        entry.pre = document.createElement('pre');
+        entry.body.appendChild(entry.pre);
+      }
+      entry.subEl.textContent = `${doneCount}/${items.length}`;
+      entry.pre.textContent = items
+        .map((t) => (t.completed ? '☑ ' : '☐ ') + t.text)
+        .join('\n');
+      if (done) setCodexCardState(entry, 'completed');
+      break;
+    }
+    case 'error': {
+      const d = document.createElement('div');
+      d.className = 'chat-err';
+      d.textContent = '오류: ' + (item.message || '');
+      el.appendChild(d);
+      break;
+    }
+  }
+  scrollChat(p, el);
+}
+
+function codexErrLine(p, message) {
+  const d = document.createElement('div');
+  d.className = 'chat-err';
+  d.textContent = '오류: ' + message;
+  p.codexChatEl.appendChild(d);
+  scrollChat(p, p.codexChatEl);
+  setCodexBusy(p, false);
+}
+
+window.api.onCodexEvent(({ projectId, event: ev }) => {
+  const p = projectById(projectId);
+  if (!p) return;
+  switch (ev.type) {
+    case 'turn.started':
+      setCodexBusy(p, true);
+      break;
+    case 'item.started':
+    case 'item.updated':
+      renderCodexItem(p, ev.item, false);
+      break;
+    case 'item.completed':
+      renderCodexItem(p, ev.item, true);
+      break;
+    case 'turn.completed': {
+      const u = ev.usage || {};
+      const d = document.createElement('div');
+      d.className = 'chat-result';
+      d.textContent = `토큰 입력 ${u.input_tokens ?? '?'} · 출력 ${u.output_tokens ?? '?'}`;
+      p.codexChatEl.appendChild(d);
+      scrollChat(p, p.codexChatEl);
+      setCodexBusy(p, false);
+      break;
+    }
+    case 'turn.failed':
+      codexErrLine(p, ev.error && ev.error.message ? ev.error.message : '턴 실패');
+      break;
+    case 'error':
+      codexErrLine(p, ev.message || '알 수 없는 오류');
+      break;
+  }
+});
+
+window.api.onCodexError(({ projectId, message }) => {
+  const p = projectById(projectId);
+  if (p) codexErrLine(p, message);
+});
+
+// ============================================================================
+// 협업 모드 — 상태 로그는 Claude 채팅에, 릴레이 말풍선은 수신자 채팅에 표시.
+// ============================================================================
+const collabToggle = document.getElementById('collab-toggle');
+const collabRounds = document.getElementById('collab-rounds');
+const collabManual = document.getElementById('collab-manual');
+
+collabToggle.addEventListener('change', () =>
+  window.api.setConfig({ collabEnabled: collabToggle.checked })
+);
+collabRounds.addEventListener('change', () =>
+  window.api.setConfig({ collabRounds: collabRounds.value })
+);
+collabManual.addEventListener('change', () =>
+  window.api.setConfig({ collabManual: collabManual.checked })
+);
+
+function collabNote(p, text) {
+  clearEmpty(p, p.chatEl);
+  const d = document.createElement('div');
+  d.className = 'collab-status';
+  d.textContent = '⇄ ' + text;
+  p.chatEl.appendChild(d);
+  scrollChat(p, p.chatEl);
+}
+
+window.api.onCollabStatus(({ projectId, text }) => {
+  const p = projectById(projectId);
+  if (!p) return;
+  collabNote(p, text);
+});
+
+window.api.onCollabRelay(({ projectId, from, to, text, relayId }) => {
+  const p = projectById(projectId);
+  if (!p) return;
+  const target = to === 'codex' ? p.codexChatEl : p.chatEl;
+  clearEmpty(p, target);
+  const wrap = document.createElement('div');
+  wrap.className = 'relay-msg';
+  const label = document.createElement('div');
+  label.className = 'relay-label';
+  label.textContent =
+    (from === 'claude' ? '✳ Claude' : '◆ Codex') +
+    ' → ' +
+    (to === 'claude' ? '✳ Claude' : '◆ Codex');
+  const body = document.createElement('div');
+  body.className = 'relay-body';
+  body.textContent = text;
+  wrap.append(label, body);
+  // 수동 릴레이: 승인해야 상대에게 전달된다.
+  if (relayId) {
+    const actions = document.createElement('div');
+    actions.className = 'perm-actions';
+    const respond = (approved) => {
+      window.api.collabRelayApprove(relayId, approved);
+      actions.remove();
+      const tag = document.createElement('div');
+      tag.className = 'relay-label';
+      tag.textContent = approved ? '→ 전달됨' : '→ 중단됨';
+      wrap.appendChild(tag);
+    };
+    const ok = document.createElement('button');
+    ok.className = 'allow';
+    ok.textContent = '전달';
+    ok.onclick = () => respond(true);
+    const no = document.createElement('button');
+    no.className = 'deny';
+    no.textContent = '중단';
+    no.onclick = () => respond(false);
+    actions.append(ok, no);
+    wrap.appendChild(actions);
+  }
+  target.appendChild(wrap);
+  scrollChat(p, target);
+});
+
+window.api.onCollabDone(({ projectId, text }) => {
+  const p = projectById(projectId);
+  if (!p) return;
+  p.collabRunning = false;
+  collabNote(p, '협업 종료 — ' + text);
+  if (p.id === activeProjectId) applyChatBusyUI(p);
+});
+
 // --- sending ---
 function sendChat() {
   const p = activeProject();
   const text = chatInput.value.trim();
   const images = pendingImages.slice();
-  if ((!text && !images.length) || !p || p.chatBusy) return;
+  if ((!text && !images.length) || !p) return;
+
+  // 협업 모드: 실행 중이면 개입 메시지, 아니면 새 협업 시작.
+  if (p.collabRunning || (collabToggle.checked && text)) {
+    if (images.length)
+      return void showAttachWarn('협업 모드에서는 이미지 첨부를 지원하지 않습니다.');
+    if (!text) return;
+    chatInput.value = '';
+    autosizeChatInput();
+    if (p.collabRunning) {
+      addUserBubble(p, '[개입] ' + text);
+      window.api.collabInterject(p.id, text);
+    } else {
+      addUserBubble(p, text);
+      p.collabRunning = true;
+      applyChatBusyUI(p);
+      window.api.collabStart({
+        projectId: p.id,
+        cwd: p.folder,
+        text,
+        maxRounds: parseInt(collabRounds.value, 10) || 2,
+        manual: collabManual.checked,
+        model: chatModel,
+        effort: chatEffort,
+        codexModel: codexChatModel,
+      });
+    }
+    return;
+  }
+
+  // Codex 단독 채팅.
+  if (p.activeEngine === 'codex') {
+    if (p.codexBusy) return;
+    if (images.length)
+      return void showAttachWarn('Codex 채팅은 이미지 첨부를 아직 지원하지 않습니다.');
+    if (!text) return;
+    addUserBubble(p, text, [], p.codexChatEl);
+    chatInput.value = '';
+    autosizeChatInput();
+    setCodexBusy(p, true);
+    window.api.codexSend(p.id, p.folder, text, codexChatModel, chatEffort);
+    return;
+  }
+
+  // Claude 단독 채팅 (기존 흐름).
+  if (p.chatBusy) return;
   addUserBubble(p, text, images);
 
   // Build the message: plain string for text-only, else an array of content
@@ -1437,11 +1896,22 @@ function sendChat() {
 }
 chatSend.addEventListener('click', sendChat);
 chatStop.addEventListener('click', () => {
-  if (activeProjectId) window.api.agentInterrupt(activeProjectId);
+  const p = activeProject();
+  if (!p) return;
+  if (p.collabRunning) window.api.collabStop(p.id);
+  else if (p.activeEngine === 'codex') window.api.codexInterrupt(p.id);
+  else window.api.agentInterrupt(p.id);
 });
 document.getElementById('btn-chat-new').addEventListener('click', async () => {
   const p = activeProject();
-  if (!p) return;
+  if (!p || p.collabRunning) return; // 협업 중에는 먼저 중단(■)부터
+  if (p.activeEngine === 'codex') {
+    await window.api.codexNew(p.id);
+    p.codexChatEl.innerHTML = EMPTY_CODEX_HTML;
+    p.codexCards = {};
+    setCodexBusy(p, false);
+    return;
+  }
   await window.api.agentNew(p.id);
   p.chatEl.innerHTML = EMPTY_CHAT_HTML;
   p.toolCards = {};
@@ -1574,9 +2044,33 @@ function quoteToInput(text) {
 
   // Restore chat model / effort selection.
   chatModel = cfg.chatModel || '';
+  codexChatModel = cfg.codexModel || '';
   chatEffort = cfg.chatEffort || 'high';
   modelSelect.value = chatModel;
   effortSelect.value = chatEffort;
+
+  // Codex 모델 목록을 CLI 캐시에서 동적으로 채운다 (실패 시 HTML 기본 목록 유지).
+  const codexModels = await window.api.codexModels();
+  if (codexModels) {
+    codexModelSelect.innerHTML = '<option value="">기본값</option>';
+    for (const m of codexModels) {
+      const opt = document.createElement('option');
+      opt.value = m.slug;
+      opt.textContent = m.name;
+      codexModelSelect.appendChild(opt);
+    }
+  }
+  codexModelSelect.value = codexChatModel;
+  // 저장해둔 모델이 목록에서 사라졌으면 기본값으로 되돌린다.
+  if (codexModelSelect.value !== codexChatModel) {
+    codexChatModel = '';
+    codexModelSelect.value = '';
+  }
+
+  // Restore 협업 모드 settings.
+  collabToggle.checked = !!cfg.collabEnabled;
+  collabRounds.value = cfg.collabRounds || '2';
+  collabManual.checked = !!cfg.collabManual;
 
   const folders =
     cfg.openFolders && cfg.openFolders.length

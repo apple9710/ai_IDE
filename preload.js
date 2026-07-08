@@ -50,4 +50,25 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.on('agent:permission', (_e, p) => cb(p)),
   onAgentError: (cb) => ipcRenderer.on('agent:error', (_e, p) => cb(p)),
   onAgentClosed: (cb) => ipcRenderer.on('agent:closed', (_e, p) => cb(p)),
+
+  // OpenAI Codex SDK (chat) — scoped per project
+  codexSend: (projectId, cwd, text, model, effort, sandbox) =>
+    ipcRenderer.invoke('codex:send', { projectId, cwd, text, model, effort, sandbox }),
+  codexInterrupt: (projectId) =>
+    ipcRenderer.invoke('codex:interrupt', { projectId }),
+  codexNew: (projectId) => ipcRenderer.invoke('codex:new', { projectId }),
+  codexModels: () => ipcRenderer.invoke('codex:models'),
+  onCodexEvent: (cb) => ipcRenderer.on('codex:event', (_e, p) => cb(p)),
+  onCodexError: (cb) => ipcRenderer.on('codex:error', (_e, p) => cb(p)),
+
+  // 협업 모드 (Claude ⇄ Codex orchestrator)
+  collabStart: (opts) => ipcRenderer.invoke('collab:start', opts),
+  collabStop: (projectId) => ipcRenderer.invoke('collab:stop', { projectId }),
+  collabInterject: (projectId, text) =>
+    ipcRenderer.invoke('collab:interject', { projectId, text }),
+  collabRelayApprove: (relayId, approved) =>
+    ipcRenderer.send('collab:relay-approve', { relayId, approved }),
+  onCollabStatus: (cb) => ipcRenderer.on('collab:status', (_e, p) => cb(p)),
+  onCollabRelay: (cb) => ipcRenderer.on('collab:relay', (_e, p) => cb(p)),
+  onCollabDone: (cb) => ipcRenderer.on('collab:done', (_e, p) => cb(p)),
 });

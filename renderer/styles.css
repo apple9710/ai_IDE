@@ -8,6 +8,7 @@
 :root {
   --clay: #d97757; /* Claude signature accent */
   --clay-hover: #e08a6d;
+  --codex: #10a37f; /* OpenAI Codex accent */
   --bg: #262624; /* main warm dark */
   --bg-alt: #30302e; /* panels / sidebar */
   --bg-dark: #1f1e1d; /* activity bar / terminal */
@@ -200,6 +201,13 @@ body {
   font-size: 12px;
   margin-right: 5px;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-faint);
+}
+.tree-node .ic svg {
+  width: 14px;
+  height: 14px;
 }
 .tree-node .name {
   overflow: hidden;
@@ -529,6 +537,19 @@ body {
   cursor: pointer;
   font-size: 12.5px;
   color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.ctx-item svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+.ctx-item:hover svg,
+.ctx-item.danger svg {
+  color: inherit;
 }
 .ctx-item:hover {
   background: var(--clay);
@@ -732,6 +753,9 @@ body {
 .cs-field select:hover {
   border-color: var(--clay);
 }
+.cs-field.hidden {
+  display: none;
+}
 
 #chat-messages {
   flex: 1;
@@ -810,6 +834,13 @@ body {
   font-size: 12px;
   cursor: pointer;
   white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+#selection-pop button svg {
+  width: 13px;
+  height: 13px;
 }
 #selection-pop button:hover {
   background: var(--clay);
@@ -904,6 +935,12 @@ body {
 }
 .tool-head .tool-ic {
   color: var(--clay);
+  display: inline-flex;
+  align-items: center;
+}
+.tool-head .tool-ic svg {
+  width: 14px;
+  height: 14px;
 }
 .tool-head .tool-name {
   font-weight: 600;
@@ -919,6 +956,19 @@ body {
 .tool-head .tool-state {
   font-size: 11px;
   color: var(--text-faint);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.tool-head .tool-state svg {
+  width: 12px;
+  height: 12px;
+}
+.tool-head .tool-state.ok {
+  color: var(--git-add);
+}
+.tool-head .tool-state.err {
+  color: var(--git-del);
 }
 .tool-body {
   border-top: 1px solid var(--border);
@@ -1176,4 +1226,94 @@ body {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: #4a4844;
+}
+
+/* ==== engine tabs (Claude / Codex) ======================================== */
+.chat-engines {
+  display: flex;
+  gap: 4px;
+  padding: 6px 14px 0;
+  background: var(--bg-alt);
+  flex-shrink: 0;
+}
+.engine-tab {
+  flex: 1;
+  background: var(--bg-dark);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.engine-tab:hover {
+  color: var(--text);
+}
+.engine-tab.active {
+  background: var(--bg-elev);
+  color: var(--text);
+  border-color: var(--clay);
+}
+#engine-codex.active {
+  border-color: var(--codex);
+}
+.chat-empty-star.codex {
+  color: var(--codex);
+}
+
+/* ==== 협업 모드 ============================================================ */
+.collab-settings {
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.cs-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.cs-check input {
+  accent-color: var(--clay);
+  cursor: pointer;
+}
+.collab-status {
+  align-self: center;
+  font-size: 11px;
+  color: var(--text-faint);
+  background: var(--bg-alt);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 4px 12px;
+}
+
+/* relay bubble: what one agent handed to the other */
+.relay-msg {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--codex);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: var(--bg-alt);
+}
+.chat-scroll:not(.codex-scroll) .relay-msg {
+  border-left-color: var(--clay);
+}
+.relay-label {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  margin-bottom: 5px;
+}
+.relay-body {
+  font-size: 12.5px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  user-select: text;
+  cursor: auto;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.relay-msg .perm-actions {
+  margin-top: 8px;
 }

@@ -93,15 +93,21 @@
       <div id="chat-panel">
         <div class="chat-header">
           <div class="chat-title">
-            <span class="chat-star">✳</span> Claude
+            <span class="chat-star">✳</span>
+            <span id="chat-engine-name">Claude</span>
             <span id="chat-model" class="chat-model"></span>
           </div>
           <div class="chat-header-actions">
             <button id="btn-chat-new" title="새 대화">＋ 새 대화</button>
           </div>
         </div>
+        <!-- Engine tabs: which agent this panel is talking to -->
+        <div class="chat-engines">
+          <button id="engine-claude" class="engine-tab active">✳ Claude</button>
+          <button id="engine-codex" class="engine-tab">◆ Codex</button>
+        </div>
         <div class="chat-settings">
-          <label class="cs-field">
+          <label class="cs-field" id="claude-model-field">
             <span>모델</span>
             <select id="chat-model-select">
               <option value="">기본값</option>
@@ -109,6 +115,16 @@
               <option value="sonnet">Sonnet 5</option>
               <option value="haiku">Haiku 4.5</option>
               <option value="fable">Fable 5</option>
+            </select>
+          </label>
+          <label class="cs-field hidden" id="codex-model-field">
+            <span>모델</span>
+            <select id="codex-model-select">
+              <option value="">기본값</option>
+              <option value="gpt-5.5">GPT-5.5</option>
+              <option value="gpt-5.4">GPT-5.4</option>
+              <option value="gpt-5.4-mini">GPT-5.4-Mini</option>
+              <option value="gpt-5.3-codex-spark">GPT-5.3-Codex-Spark</option>
             </select>
           </label>
           <label class="cs-field">
@@ -120,6 +136,32 @@
               <option value="xhigh">매우 높음</option>
               <option value="max">최대</option>
             </select>
+          </label>
+        </div>
+        <!-- 협업 모드: Claude가 계획 → Codex 검토 → 합의 후 Claude가 실행 -->
+        <div class="chat-settings collab-settings">
+          <label class="cs-check" title="Claude가 계획을 세우고 Codex의 검토를 받아 합의한 뒤 실행합니다">
+            <input type="checkbox" id="collab-toggle" />
+            <span>협업 모드</span>
+          </label>
+          <label class="cs-field">
+            <span>주도</span>
+            <select id="collab-driver">
+              <option value="claude">Claude</option>
+              <option value="codex" disabled>Codex (추후 지원)</option>
+            </select>
+          </label>
+          <label class="cs-field">
+            <span>라운드</span>
+            <select id="collab-rounds">
+              <option value="1">1</option>
+              <option value="2" selected>2</option>
+              <option value="3">3</option>
+            </select>
+          </label>
+          <label class="cs-check" title="각 전달을 승인해야 상대에게 넘어갑니다">
+            <input type="checkbox" id="collab-manual" />
+            <span>수동 릴레이</span>
           </label>
         </div>
         <div id="chat-messages"></div>
@@ -152,7 +194,7 @@
     <!-- Floating popup shown when text is selected in the chat -->
     <div id="selection-pop" class="hidden">
       <button id="sel-copy">복사</button>
-      <button id="sel-ask">💬 이 부분 질문하기</button>
+      <button id="sel-ask"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg> 이 부분 질문하기</button>
     </div>
 
     <!-- Generic input modal -->

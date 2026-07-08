@@ -455,7 +455,11 @@ async function startChat(cwd, projectId, opts) {
 
   (async () => {
     try {
-      for await (const m of q) send('agent:message', { projectId, message: m });
+      for await (const m of q) {
+        send('agent:message', { projectId, message: m });
+        // Let the collab orchestrator (or any waiter) observe turn completion.
+        if (m.type === 'result') resolveClaudeTurn(projectId, m);
+      }
     } catch (e) {
       send('agent:error', {
         projectId,
@@ -471,19 +475,41 @@ async function startChat(cwd, projectId, opts) {
       }
       send('agent:closed', { projectId });
       chats.delete(projectId);
+      resolveClaudeTurn(projectId, null); // unblock a collab waiting on this session
     }
   })();
 }
 
-// `content` is either a plain string or an array of content blocks (text +
-// base64 image blocks) so the renderer can attach images to a message.
-ipcMain.handle('agent:send', async (_e, { content, cwd, projectId, model, effort }) => {
-  if (!chats.has(projectId)) await startChat(cwd, projectId, { model, effort });
+// Turn waiters: the collab orchestrator needs to know when a Claude turn ends.
+// Normal chat traffic resolves with no waiters registered (no-op).
+const claudeTurnWaiters = new Map(); // projectId -> [resolve]
+function awaitClaudeResult(projectId) {
+  return new Promise((resolve) => {
+    const arr = claudeTurnWaiters.get(projectId) || [];
+    arr.push(resolve);
+    claudeTurnWaiters.set(projectId, arr);
+  });
+}
+function resolveClaudeTurn(projectId, m) {
+  const arr = claudeTurnWaiters.get(projectId);
+  if (!arr) return;
+  claudeTurnWaiters.delete(projectId);
+  for (const r of arr) r(m);
+}
+
+async function sendToClaude(projectId, cwd, content, opts) {
+  if (!chats.has(projectId)) await startChat(cwd, projectId, opts || {});
   chats.get(projectId).input.push({
     type: 'user',
     message: { role: 'user', content },
     parent_tool_use_id: null,
   });
+}
+
+// `content` is either a plain string or an array of content blocks (text +
+// base64 image blocks) so the renderer can attach images to a message.
+ipcMain.handle('agent:send', async (_e, { content, cwd, projectId, model, effort }) => {
+  await sendToClaude(projectId, cwd, content, { model, effort });
   return { ok: true };
 });
 
@@ -543,4 +569,320 @@ ipcMain.on('agent:permission-response', (_e, { id, behavior, message }) => {
       message: message || '사용자가 거부했습니다.',
     });
   }
+});
+
+// ---- OpenAI Codex SDK (chat) ------------------------------------------------
+// Same ESM story as the Claude SDK: load lazily via dynamic import.
+let codexSdkModule = null;
+async function getCodexSdk() {
+  if (!codexSdkModule) codexSdkModule = await import('@openai/codex-sdk');
+  return codexSdkModule;
+}
+
+// Same asar story as claudeExecutablePath: the platform package ships a native
+// codex.exe that cannot run from inside app.asar — point the SDK at the
+// unpacked copy (see asarUnpack in package.json).
+function codexExecutablePath() {
+  const bin = 'codex' + (process.platform === 'win32' ? '.exe' : '');
+  try {
+    const pkgJson = require.resolve(
+      `@openai/codex-${process.platform}-${process.arch}/package.json`
+    );
+    const root = path
+      .dirname(pkgJson)
+      .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+    const vendor = path.join(root, 'vendor');
+    for (const triple of fs.readdirSync(vendor)) {
+      const p = path.join(vendor, triple, 'bin', bin);
+      if (fs.existsSync(p)) return p;
+    }
+  } catch {
+    /* fall back to the SDK's own resolution (dev) */
+  }
+  return undefined;
+}
+
+// Codex reasoning effort has no 'max'; Claude-side 'max' maps to 'xhigh'.
+const CODEX_EFFORT = {
+  low: 'low',
+  medium: 'medium',
+  high: 'high',
+  xhigh: 'xhigh',
+  max: 'xhigh',
+};
+
+// One Codex thread per project, like `chats` for Claude. Sandbox is fixed at
+// thread creation: standalone chat gets workspace-write, a collab-created
+// reviewer thread gets read-only.
+const codexChats = new Map(); // projectId -> { thread, threadOpts, model, abort, busy }
+
+async function ensureCodexThread(projectId, cwd, opts) {
+  opts = opts || {};
+  const { Codex } = await getCodexSdk();
+  const codexOpts = {};
+  const exe = codexExecutablePath();
+  if (exe) codexOpts.codexPathOverride = exe;
+
+  const wantModel = opts.model || '';
+  let entry = codexChats.get(projectId);
+  if (entry) {
+    // 모델이 바뀌면 같은 대화를 새 모델로 이어간다 (~/.codex/sessions 영속화).
+    if (wantModel !== entry.model && !entry.busy) {
+      const threadOpts = { ...entry.threadOpts };
+      if (wantModel) threadOpts.model = wantModel;
+      else delete threadOpts.model;
+      entry.thread = entry.thread.id
+        ? new Codex(codexOpts).resumeThread(entry.thread.id, threadOpts)
+        : new Codex(codexOpts).startThread(threadOpts);
+      entry.threadOpts = threadOpts;
+      entry.model = wantModel;
+    }
+    return entry;
+  }
+
+  const threadOpts = {
+    workingDirectory: cwd || config.lastFolder || os.homedir(),
+    sandboxMode: opts.sandbox || 'workspace-write',
+    skipGitRepoCheck: true,
+    ...(wantModel ? { model: wantModel } : {}),
+    ...(opts.effort
+      ? { modelReasoningEffort: CODEX_EFFORT[opts.effort] || 'high' }
+      : {}),
+  };
+  entry = {
+    thread: new Codex(codexOpts).startThread(threadOpts),
+    threadOpts,
+    model: wantModel,
+    abort: null,
+    busy: false,
+  };
+  codexChats.set(projectId, entry);
+  return entry;
+}
+
+// Run one streamed Codex turn, forwarding every event to the renderer.
+// Resolves with the final agent text, or null on failure/abort/busy.
+async function runCodexTurn(projectId, cwd, text, opts) {
+  const entry = await ensureCodexThread(projectId, cwd, opts);
+  if (entry.busy) return null;
+  entry.busy = true;
+  entry.abort = new AbortController();
+  let finalText = '';
+  try {
+    const { events } = await entry.thread.runStreamed(text, {
+      signal: entry.abort.signal,
+    });
+    for await (const ev of events) {
+      send('codex:event', { projectId, event: ev });
+      if (ev.type === 'item.completed' && ev.item.type === 'agent_message')
+        finalText = ev.item.text;
+      if (ev.type === 'turn.failed' || ev.type === 'error') finalText = null;
+    }
+  } catch (e) {
+    send('codex:error', {
+      projectId,
+      message: String(e && e.message ? e.message : e),
+    });
+    finalText = null;
+  } finally {
+    entry.busy = false;
+    entry.abort = null;
+  }
+  return finalText;
+}
+
+ipcMain.handle('codex:send', (_e, { projectId, cwd, text, model, effort, sandbox }) => {
+  // Fire and forget — events stream back via codex:event.
+  runCodexTurn(projectId, cwd, text, { model, effort, sandbox });
+  return { ok: true };
+});
+
+ipcMain.handle('codex:interrupt', (_e, { projectId }) => {
+  const entry = codexChats.get(projectId);
+  if (entry && entry.abort) entry.abort.abort();
+  return { ok: true };
+});
+
+ipcMain.handle('codex:new', (_e, { projectId }) => {
+  const entry = codexChats.get(projectId);
+  if (entry && entry.abort) entry.abort.abort();
+  codexChats.delete(projectId);
+  return { ok: true };
+});
+
+// 사용 가능한 Codex 모델 목록 — CLI가 서버에서 받아 캐시한 파일을 읽는다.
+// 계정에 새 모델이 열리면 다음 실행 때 드롭다운에 자동 반영된다.
+ipcMain.handle('codex:models', async () => {
+  try {
+    const raw = await fs.promises.readFile(
+      path.join(os.homedir(), '.codex', 'models_cache.json'),
+      'utf8'
+    );
+    const models = (JSON.parse(raw).models || [])
+      .filter((m) => m.visibility === 'list')
+      .map((m) => ({ slug: m.slug, name: m.display_name || m.slug }));
+    return models.length ? models : null;
+  } catch {
+    return null; // 캐시 없음 — 렌더러는 HTML의 기본 목록을 유지
+  }
+});
+
+// ---- 협업 모드 (Claude ⇄ Codex orchestrator) --------------------------------
+// Relay loop: Claude drafts a plan → Codex (read-only) reviews → Claude revises
+// — up to maxRounds or until Claude emits the [합의완료] marker — then Claude
+// executes through the normal permission-card flow.
+const collabs = new Map(); // projectId -> { cancelled, manual, interjections }
+const pendingRelays = new Map(); // relayId -> { projectId, resolve }
+let relayCounter = 0;
+
+function collabStatus(projectId, text) {
+  send('collab:status', { projectId, text });
+}
+
+// Show the handoff in the target chat; in manual mode wait for the user to
+// approve it. Resolves false when denied or the collab was cancelled.
+function relayGate(projectId, from, to, text) {
+  const c = collabs.get(projectId);
+  if (!c || c.cancelled) return Promise.resolve(false);
+  if (!c.manual) {
+    send('collab:relay', { projectId, from, to, text });
+    return Promise.resolve(true);
+  }
+  const id = 'relay-' + ++relayCounter;
+  send('collab:relay', { projectId, from, to, text, relayId: id });
+  return new Promise((resolve) =>
+    pendingRelays.set(id, { projectId, resolve })
+  );
+}
+
+function finishCollab(projectId, text) {
+  collabs.delete(projectId);
+  for (const [id, entry] of [...pendingRelays.entries()]) {
+    if (entry.projectId !== projectId) continue;
+    entry.resolve(false);
+    pendingRelays.delete(id);
+  }
+  send('collab:done', { projectId, text });
+}
+
+async function runCollab(projectId, cwd, userText, opts) {
+  const c = { cancelled: false, manual: !!opts.manual, interjections: [] };
+  collabs.set(projectId, c);
+  const maxRounds = Math.max(1, Math.min(5, opts.maxRounds || 2));
+  const claudeOpts = { model: opts.model, effort: opts.effort };
+
+  // One Claude turn: send prompt (+ any queued user interjections), await result.
+  const askClaude = async (prompt) => {
+    if (c.cancelled) return null;
+    const inter = c.interjections.splice(0);
+    const full = inter.length
+      ? prompt + '\n\n[사용자 개입 — 최우선으로 반영하라]\n' + inter.join('\n')
+      : prompt;
+    const waited = awaitClaudeResult(projectId);
+    await sendToClaude(projectId, cwd, full, claudeOpts);
+    const m = await waited;
+    if (!m || m.subtype !== 'success' || c.cancelled) return null;
+    return m.result || '';
+  };
+
+  try {
+    collabStatus(
+      projectId,
+      `협업 시작 — Claude가 계획을 정리합니다 (최대 ${maxRounds}라운드)`
+    );
+    let claudeText = await askClaude(
+      '[협업 모드] 너는 OpenAI Codex와 협업해 작업을 진행 중이다. 아래 사용자 요청을 분석해 구현 계획을 정리하라.\n' +
+        '- 이 단계에서는 파일을 수정하거나 상태를 바꾸는 명령을 실행하지 마라 (읽기/탐색은 허용).\n' +
+        '- 답변은 Codex에게 그대로 전달된다. 검토받을 계획과 근거를 명확하게 써라.\n\n' +
+        '[사용자 요청]\n' +
+        userText
+    );
+    if (claudeText == null) return finishCollab(projectId, '중단됨');
+
+    let agreed = false;
+    for (let round = 1; round <= maxRounds && !agreed; round++) {
+      if (!(await relayGate(projectId, 'claude', 'codex', claudeText)))
+        return finishCollab(projectId, '릴레이가 거부되어 중단됨');
+      collabStatus(projectId, `라운드 ${round}/${maxRounds} — Codex가 검토 중…`);
+      const codexText = await runCodexTurn(
+        projectId,
+        cwd,
+        '[협업 모드] 너는 검토자다. Claude가 제안한 아래 계획을 검토해 동의하는 점, 문제점, 개선 제안을 간결하게 답하라.\n' +
+          '파일은 읽기만 하라. 코드를 직접 수정하지 마라.\n\n[Claude의 계획]\n' +
+          claudeText,
+        { sandbox: 'read-only', effort: opts.effort, model: opts.codexModel }
+      );
+      if (codexText == null || c.cancelled)
+        return finishCollab(projectId, '중단됨');
+
+      if (!(await relayGate(projectId, 'codex', 'claude', codexText)))
+        return finishCollab(projectId, '릴레이가 거부되어 중단됨');
+      collabStatus(
+        projectId,
+        `라운드 ${round}/${maxRounds} — Claude가 의견을 반영 중…`
+      );
+      claudeText = await askClaude(
+        '[협업 모드] Codex의 검토 의견이다. 타당한 지적은 반영하고, 동의하지 않으면 근거를 들어 반박하라.\n' +
+          '합의에 도달했다고 판단하면 답변에 "[합의완료]"를 포함하고 최종 계획을 정리하라.\n\n[Codex 의견]\n' +
+          codexText
+      );
+      if (claudeText == null) return finishCollab(projectId, '중단됨');
+      agreed = claudeText.includes('[합의완료]');
+    }
+
+    collabStatus(
+      projectId,
+      agreed
+        ? '합의 완료 — Claude가 작업을 실행합니다'
+        : '라운드 상한 도달 — 현재 계획으로 작업을 실행합니다'
+    );
+    const result = await askClaude(
+      '[협업 모드 — 실행 단계] 토론에서 정리한 최종 계획대로 이제 실제 작업을 수행하라. 필요한 파일 수정과 명령 실행을 진행하라.'
+    );
+    finishCollab(projectId, result == null ? '중단됨' : '작업 완료');
+  } catch (e) {
+    finishCollab(projectId, '오류: ' + String(e && e.message ? e.message : e));
+  }
+}
+
+ipcMain.handle(
+  'collab:start',
+  (_e, { projectId, cwd, text, maxRounds, manual, model, effort, codexModel }) => {
+    if (collabs.has(projectId))
+      return { error: '이미 협업이 진행 중입니다.' };
+    runCollab(projectId, cwd, text, { maxRounds, manual, model, effort, codexModel });
+    return { ok: true };
+  }
+);
+
+ipcMain.handle('collab:stop', (_e, { projectId }) => {
+  const c = collabs.get(projectId);
+  if (c) c.cancelled = true;
+  // Interrupt whichever agent is mid-turn.
+  const chat = chats.get(projectId);
+  if (chat && chat.query) chat.query.interrupt().catch(() => {});
+  const codex = codexChats.get(projectId);
+  if (codex && codex.abort) codex.abort.abort();
+  // Release a pending manual-relay gate so the loop can exit.
+  for (const [id, entry] of [...pendingRelays.entries()]) {
+    if (entry.projectId !== projectId) continue;
+    entry.resolve(false);
+    pendingRelays.delete(id);
+  }
+  return { ok: true };
+});
+
+// User typed a message while a collab is running — queue it for the next
+// Claude turn instead of derailing the relay.
+ipcMain.handle('collab:interject', (_e, { projectId, text }) => {
+  const c = collabs.get(projectId);
+  if (c) c.interjections.push(text);
+  return { ok: !!c };
+});
+
+ipcMain.on('collab:relay-approve', (_e, { relayId, approved }) => {
+  const entry = pendingRelays.get(relayId);
+  if (!entry) return;
+  pendingRelays.delete(relayId);
+  entry.resolve(!!approved);
 });
