@@ -1,6 +1,6 @@
 {
   "name": "claude-ide",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "A lightweight VS Code-style IDE for using Claude Code",
   "main": "main.js",
   "scripts": {

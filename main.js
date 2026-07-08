@@ -423,6 +423,7 @@ async function startChat(cwd, projectId, opts) {
         resolve,
         suggestions: opts.suggestions,
         projectId,
+        input: toolInput, // allow 응답의 updatedInput으로 그대로 되돌려줘야 함
       });
       send('agent:permission', {
         projectId,
@@ -556,11 +557,14 @@ ipcMain.on('agent:permission-response', (_e, { id, behavior, message }) => {
   const entry = pendingPermissions.get(id);
   if (!entry) return;
   pendingPermissions.delete(id);
+  // CLI의 Zod 스키마상 allow 응답은 updatedInput(원본 도구 입력)이 필수다 —
+  // 빠지면 승인해도 ZodError로 도구 실행이 실패한다.
   if (behavior === 'allow') {
-    entry.resolve({ behavior: 'allow' });
+    entry.resolve({ behavior: 'allow', updatedInput: entry.input });
   } else if (behavior === 'allow-always') {
     entry.resolve({
       behavior: 'allow',
+      updatedInput: entry.input,
       updatedPermissions: entry.suggestions || undefined,
     });
   } else {
