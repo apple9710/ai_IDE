@@ -855,6 +855,7 @@ const btnTerminal = document.getElementById('btn-terminal');
 btnExplorer.addEventListener('click', () => {
   sidebar.classList.toggle('hidden');
   btnExplorer.classList.toggle('active', !sidebar.classList.contains('hidden'));
+  refitActiveTerminal();
 });
 btnTerminal.addEventListener('click', () => {
   const hidden = terminalPanel.classList.toggle('hidden');
@@ -910,7 +911,8 @@ window.addEventListener('keydown', (e) => {
 // ============================================================================
 const resizer = document.getElementById('panel-resizer');
 let resizing = false;
-resizer.addEventListener('mousedown', () => {
+resizer.addEventListener('mousedown', (e) => {
+  e.preventDefault(); // 드래그 중 텍스트 선택 방지
   resizing = true;
   document.body.style.cursor = 'ns-resize';
 });
@@ -1936,6 +1938,7 @@ btnChat.addEventListener('click', () => {
   const hidden = chatPanel.classList.toggle('hidden');
   chatResizer.classList.toggle('hidden', hidden);
   btnChat.classList.toggle('active', !hidden);
+  refitActiveTerminal(); // 패널 폭이 바뀌었으니 터미널 cols 재계산
   if (!hidden) chatInput.focus();
 });
 window.addEventListener('keydown', (e) => {
@@ -1947,7 +1950,8 @@ window.addEventListener('keydown', (e) => {
 });
 
 let resizingChat = false;
-chatResizer.addEventListener('mousedown', () => {
+chatResizer.addEventListener('mousedown', (e) => {
+  e.preventDefault();
   resizingChat = true;
   document.body.style.cursor = 'ew-resize';
 });
@@ -1955,11 +1959,13 @@ window.addEventListener('mousemove', (e) => {
   if (!resizingChat) return;
   const w = Math.max(300, Math.min(window.innerWidth - e.clientX, 820));
   chatPanel.style.width = w + 'px';
+  refitActiveTerminal();
 });
 window.addEventListener('mouseup', () => {
   if (resizingChat) {
     resizingChat = false;
     document.body.style.cursor = '';
+    refitActiveTerminal();
   }
 });
 

@@ -434,10 +434,21 @@ body {
 
 /* ---- Panel resizer ---- */
 #panel-resizer {
-  height: 4px;
+  height: 5px;
   background: var(--bg-dark);
   cursor: ns-resize;
   flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+}
+/* 실제 히트 영역을 위아래로 넓혀 잡기 쉽게 */
+#panel-resizer::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -4px;
+  bottom: -4px;
 }
 #panel-resizer:hover {
   background: var(--clay);
@@ -508,10 +519,13 @@ body {
   min-height: 0;
   padding: 6px 10px;
   background: #000;
+  /* fit 어긋남 시 xterm이 패널 밖(채팅 패널 위)으로 넘쳐 클릭을 가로채던 것 방지 */
+  overflow: hidden;
 }
 .term-instance {
   position: absolute;
   inset: 6px 10px;
+  overflow: hidden;
 }
 .term-instance.hidden {
   display: none;
@@ -666,10 +680,20 @@ body {
 
 /* ---- Chat panel (Claude Agent SDK) ---- */
 #chat-resizer {
-  width: 4px;
+  width: 5px;
   background: var(--bg-dark);
   cursor: ew-resize;
   flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+}
+#chat-resizer::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  right: -4px;
 }
 #chat-resizer:hover {
   background: var(--clay);
