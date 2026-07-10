@@ -230,6 +230,61 @@ ipcMain.handle('fs:delete', async (_e, targetPath) => {
   return { ok: true };
 });
 
+// ---- File watcher ----------------------------------------------------------
+// 프로젝트 폴더를 재귀 감시하고 변경을 디바운스해서 렌더러에 알린다.
+// .git 내부 변경도 포함 — 커밋/체크아웃 후 git 배지가 따라 갱신되도록.
+const watchers = new Map(); // folder -> { watcher, timer, paths: Set }
+
+ipcMain.handle('fs:watch', (_e, folder) => {
+  if (!folder || watchers.has(folder)) return { ok: true };
+  let watcher;
+  try {
+    watcher = fs.watch(folder, { recursive: true }, (_event, filename) => {
+      const w = watchers.get(folder);
+      if (!w) return;
+      if (filename) w.paths.add(path.join(folder, filename.toString()));
+      clearTimeout(w.timer);
+      w.timer = setTimeout(() => {
+        const paths = [...w.paths];
+        w.paths.clear();
+        if (mainWindow && !mainWindow.isDestroyed())
+          mainWindow.webContents.send('fs:changed', { folder, paths });
+      }, 300);
+    });
+  } catch (e) {
+    return { error: e.message };
+  }
+  // 폴더가 삭제되는 등 감시가 깨지면 조용히 정리.
+  watcher.on('error', () => {
+    const w = watchers.get(folder);
+    if (w) {
+      clearTimeout(w.timer);
+      watchers.delete(folder);
+    }
+    try {
+      watcher.close();
+    } catch {
+      /* ignore */
+    }
+  });
+  watchers.set(folder, { watcher, timer: null, paths: new Set() });
+  return { ok: true };
+});
+
+ipcMain.handle('fs:unwatch', (_e, folder) => {
+  const w = watchers.get(folder);
+  if (w) {
+    clearTimeout(w.timer);
+    try {
+      w.watcher.close();
+    } catch {
+      /* ignore */
+    }
+    watchers.delete(folder);
+  }
+  return { ok: true };
+});
+
 // ---- Git IPC ---------------------------------------------------------------
 // Returns { isRepo, branch, root, files: { absolutePath: statusCode } }.
 ipcMain.handle('git:status', async (_e, folder) => {
@@ -553,14 +608,17 @@ ipcMain.handle('agent:set-model', async (_e, { projectId, model }) => {
   return { ok: true };
 });
 
-ipcMain.on('agent:permission-response', (_e, { id, behavior, message }) => {
+ipcMain.on('agent:permission-response', (_e, { id, behavior, message, answers }) => {
   const entry = pendingPermissions.get(id);
   if (!entry) return;
   pendingPermissions.delete(id);
   // CLI의 Zod 스키마상 allow 응답은 updatedInput(원본 도구 입력)이 필수다 —
   // 빠지면 승인해도 ZodError로 도구 실행이 실패한다.
+  // AskUserQuestion은 사용자가 고른 답(answers: 질문 텍스트 → 선택 라벨)을
+  // updatedInput에 합쳐 돌려줘야 Claude가 답변을 받는다.
   if (behavior === 'allow') {
-    entry.resolve({ behavior: 'allow', updatedInput: entry.input });
+    const updatedInput = answers ? { ...entry.input, answers } : entry.input;
+    entry.resolve({ behavior: 'allow', updatedInput });
   } else if (behavior === 'allow-always') {
     entry.resolve({
       behavior: 'allow',

@@ -451,7 +451,7 @@ async function openFile(filePath, name) {
     const res = await window.api.readFile(filePath);
     if (res.error) return void showError(res.error);
     const model = monaco.editor.createModel(res.content, langForFile(name));
-    openTabs.push({ path: filePath, name, kind, model });
+    openTabs.push({ path: filePath, name, kind, model, savedContent: res.content });
   } else {
     const res = await window.api.readFileBinary(filePath);
     if (res.error) return void showError(res.error);
@@ -545,9 +545,49 @@ async function saveActiveFile() {
   if (!activeTabPath) return;
   const tab = openTabs.find((t) => t.path === activeTabPath);
   if (!tab || tab.kind !== 'text') return; // binary tabs are read-only
-  await window.api.writeFile(activeTabPath, tab.model.getValue());
+  const content = tab.model.getValue();
+  await window.api.writeFile(activeTabPath, content);
+  tab.savedContent = content;
   await refreshGit();
   await rebuildTree();
+}
+
+// ============================================================================
+// 파일 시스템 감시 — 외부(터미널, Claude 등)에서 파일이 생기거나 바뀌면
+// 트리·git 배지를 자동 새로고침하고, 열린 탭도 (편집 중이 아닐 때만) 동기화.
+// ============================================================================
+let fsRefreshTimer = null;
+let pendingFsPaths = new Set(); // 소문자 정규화된 변경 경로 누적
+
+window.api.onFsChanged(({ folder, paths }) => {
+  // 백그라운드 프로젝트는 switchProject → loadActive에서 전체 갱신되므로
+  // 활성 프로젝트의 이벤트만 처리한다.
+  if (folder !== rootFolder) return;
+  for (const p of paths) pendingFsPaths.add(p.toLowerCase());
+  clearTimeout(fsRefreshTimer);
+  fsRefreshTimer = setTimeout(async () => {
+    const changed = pendingFsPaths;
+    pendingFsPaths = new Set();
+    await refreshGit();
+    await rebuildTree();
+    await reloadChangedTabs(changed);
+  }, 200);
+});
+
+// 디스크에서 바뀐 파일이 탭으로 열려 있으면 내용을 다시 읽어온다.
+// 저장 안 한 편집이 있는 탭은 건드리지 않는다.
+async function reloadChangedTabs(changedPaths) {
+  for (const tab of openTabs) {
+    if (tab.kind !== 'text' || !changedPaths.has(tab.path.toLowerCase())) continue;
+    if (tab.model.getValue() !== tab.savedContent) continue; // 편집 중 → 보존
+    const res = await window.api.readFile(tab.path);
+    if (res.error || res.content === tab.savedContent) continue;
+    const viewState =
+      activeTabPath === tab.path && monacoEditor ? monacoEditor.saveViewState() : null;
+    tab.model.setValue(res.content);
+    tab.savedContent = res.content;
+    if (viewState) monacoEditor.restoreViewState(viewState);
+  }
 }
 
 // ============================================================================
@@ -759,6 +799,7 @@ async function addProject(folder) {
   snapshotActive();
   const p = makeProject(folder);
   projects.push(p);
+  window.api.watchFolder(folder);
   activeProjectId = p.id;
   await loadActive(); // folder already set → tree renders
   createTerminal({ autoRun: false });
@@ -793,6 +834,7 @@ async function closeProject(id) {
   }
   p.chatEl.remove();
   p.codexChatEl.remove();
+  if (p.folder) window.api.unwatchFolder(p.folder);
 
   const idx = projects.findIndex((x) => x.id === id);
   projects.splice(idx, 1);
@@ -1473,10 +1515,145 @@ window.api.onAgentMessage(({ projectId, message: m }) => {
   }
 });
 
+// AskUserQuestion 선택지 카드 — 질문마다 옵션을 고르고(복수 선택 지원),
+// '기타'로 직접 입력할 수도 있다. 선택 결과는 updatedInput.answers
+// (질문 텍스트 → 선택 라벨)로 메인 프로세스에 전달된다.
+function renderQuestionCard(pl) {
+  const card = document.createElement('div');
+  card.className = 'perm-card ask-card';
+  const title = document.createElement('div');
+  title.className = 'perm-title';
+  title.textContent = 'Claude가 선택을 요청합니다';
+  card.appendChild(title);
+
+  let done = false;
+  // 질문 텍스트 -> { labels: Set, other: boolean, otherInput: HTMLInput }
+  const state = new Map();
+
+  const submit = document.createElement('button');
+  submit.className = 'allow';
+  submit.textContent = '답변 보내기';
+
+  const updateSubmit = () => {
+    let ok = true;
+    for (const s of state.values()) {
+      if (s.other) {
+        if (!s.otherInput.value.trim()) ok = false;
+      } else if (!s.labels.size) ok = false;
+    }
+    submit.disabled = !ok;
+  };
+
+  for (const q of pl.input.questions) {
+    const s = { labels: new Set(), other: false, otherInput: null };
+    state.set(q.question, s);
+
+    const qTitle = document.createElement('div');
+    qTitle.className = 'ask-q-title';
+    qTitle.textContent = (q.header ? `[${q.header}] ` : '') + q.question;
+    card.appendChild(qTitle);
+
+    const optBox = document.createElement('div');
+    optBox.className = 'ask-opts';
+    const optEls = [];
+
+    const otherInput = document.createElement('input');
+    otherInput.className = 'ask-other-input';
+    otherInput.placeholder = '직접 입력…';
+    otherInput.addEventListener('input', updateSubmit);
+    s.otherInput = otherInput;
+
+    const addOpt = (label, description, isOther) => {
+      const el = document.createElement('div');
+      el.className = 'ask-opt';
+      el.innerHTML =
+        `<div class="ask-opt-label">${esc(label)}</div>` +
+        (description ? `<div class="ask-opt-desc">${esc(description)}</div>` : '');
+      el.addEventListener('click', () => {
+        if (done) return;
+        if (isOther) {
+          s.other = !s.other;
+          if (s.other && !q.multiSelect) {
+            s.labels.clear();
+            for (const o of optEls) o.classList.remove('selected');
+          }
+          el.classList.toggle('selected', s.other);
+          otherInput.style.display = s.other ? 'block' : 'none';
+          if (s.other) otherInput.focus();
+        } else {
+          if (q.multiSelect) {
+            if (s.labels.has(label)) s.labels.delete(label);
+            else s.labels.add(label);
+            el.classList.toggle('selected', s.labels.has(label));
+          } else {
+            s.labels.clear();
+            s.labels.add(label);
+            s.other = false;
+            otherInput.style.display = 'none';
+            for (const o of optEls) o.classList.toggle('selected', o === el);
+          }
+        }
+        updateSubmit();
+      });
+      optEls.push(el);
+      optBox.appendChild(el);
+    };
+
+    for (const opt of q.options || []) addOpt(opt.label, opt.description, false);
+    addOpt('기타', '직접 입력합니다', true);
+    optBox.appendChild(otherInput);
+    card.appendChild(optBox);
+  }
+
+  const actions = document.createElement('div');
+  actions.className = 'perm-actions';
+
+  const finish = (text) => {
+    done = true;
+    card.classList.add('resolved');
+    const tag = document.createElement('div');
+    tag.className = 'perm-desc';
+    tag.textContent = text;
+    card.appendChild(tag);
+  };
+
+  submit.onclick = () => {
+    if (done || submit.disabled) return;
+    const answers = {};
+    for (const [question, s] of state) {
+      const parts = [...s.labels];
+      if (s.other && s.otherInput.value.trim()) parts.push(s.otherInput.value.trim());
+      answers[question] = parts.join(', ');
+    }
+    window.api.agentRespondPermission(pl.id, 'allow', undefined, answers);
+    finish('→ ' + Object.values(answers).join(' / '));
+  };
+
+  const skip = document.createElement('button');
+  skip.className = 'deny';
+  skip.textContent = '건너뛰기';
+  skip.onclick = () => {
+    if (done) return;
+    window.api.agentRespondPermission(pl.id, 'deny', '사용자가 질문을 건너뛰었습니다.');
+    finish('→ 건너뜀');
+  };
+
+  updateSubmit();
+  actions.append(submit, skip);
+  card.appendChild(actions);
+  return card;
+}
+
 window.api.onAgentPermission((pl) => {
   const p = projectById(pl.projectId);
   if (!p) return;
   clearEmpty(p);
+  // AskUserQuestion은 허용/거부 카드가 아니라 선택지 카드로 렌더링한다.
+  if (pl.toolName === 'AskUserQuestion' && pl.input && Array.isArray(pl.input.questions)) {
+    p.chatEl.appendChild(renderQuestionCard(pl));
+    scrollChat(p);
+    return;
+  }
   const card = document.createElement('div');
   card.className = 'perm-card';
   const title = document.createElement('div');

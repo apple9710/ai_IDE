@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('api', {
   createFolder: (dir, name) => ipcRenderer.invoke('fs:createFolder', dir, name),
   rename: (oldPath, newName) => ipcRenderer.invoke('fs:rename', oldPath, newName),
   delete: (targetPath) => ipcRenderer.invoke('fs:delete', targetPath),
+  watchFolder: (folder) => ipcRenderer.invoke('fs:watch', folder),
+  unwatchFolder: (folder) => ipcRenderer.invoke('fs:unwatch', folder),
+  onFsChanged: (cb) => ipcRenderer.on('fs:changed', (_e, p) => cb(p)),
 
   // git
   gitStatus: (folder) => ipcRenderer.invoke('git:status', folder),
@@ -42,8 +45,8 @@ contextBridge.exposeInMainWorld('api', {
   agentNew: (projectId) => ipcRenderer.invoke('agent:new', { projectId }),
   agentSetModel: (projectId, model) =>
     ipcRenderer.invoke('agent:set-model', { projectId, model }),
-  agentRespondPermission: (id, behavior, message) =>
-    ipcRenderer.send('agent:permission-response', { id, behavior, message }),
+  agentRespondPermission: (id, behavior, message, answers) =>
+    ipcRenderer.send('agent:permission-response', { id, behavior, message, answers }),
   onAgentMessage: (cb) =>
     ipcRenderer.on('agent:message', (_e, m) => cb(m)),
   onAgentPermission: (cb) =>

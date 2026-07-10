@@ -1061,6 +1061,62 @@ body {
   display: none;
 }
 
+/* AskUserQuestion 선택지 카드 */
+.ask-q-title {
+  font-size: 12.5px;
+  margin: 10px 0 6px;
+}
+.ask-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.ask-opt {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: pointer;
+  background: var(--bg);
+}
+.ask-opt:hover {
+  border-color: var(--clay);
+}
+.ask-opt.selected {
+  border-color: var(--clay);
+  background: rgba(217, 119, 87, 0.15);
+}
+.ask-opt-label {
+  font-size: 12px;
+}
+.ask-opt-desc {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.ask-other-input {
+  display: none;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+.ask-other-input:focus {
+  border-color: var(--clay);
+}
+.ask-card.resolved .ask-opt {
+  pointer-events: none;
+}
+.perm-actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .chat-err {
   color: var(--git-del);
   font-size: 12px;
