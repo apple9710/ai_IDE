@@ -507,7 +507,7 @@ async function startChat(cwd, projectId, opts) {
   // Point the SDK at the unpacked native binary (required in a packaged build).
   const exe = claudeExecutablePath();
   if (exe) options.pathToClaudeCodeExecutable = exe;
-  // Model alias ('opus'/'sonnet'/'haiku'/'fable') — omit to use the CLI default.
+  // Model alias('sonnet'/'haiku'/'fable') 또는 명시적 ID('claude-opus-5' 등) — omit to use the CLI default.
   if (opts.model) options.model = opts.model;
   // Reasoning effort ('low'|'medium'|'high'|'xhigh'|'max').
   if (opts.effort) options.effort = opts.effort;

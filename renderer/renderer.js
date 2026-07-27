@@ -2392,7 +2392,17 @@ function quoteToInput(text) {
   chatModel = cfg.chatModel || '';
   codexChatModel = cfg.codexModel || '';
   chatEffort = cfg.chatEffort || 'high';
+  // 'opus' 별칭은 CLI 버전에 따라 가리키는 모델이 달라져서 명시적 ID로 이관.
+  if (chatModel === 'opus') {
+    chatModel = 'claude-opus-5';
+    window.api.setConfig({ chatModel });
+  }
   modelSelect.value = chatModel;
+  // 저장해둔 모델이 목록에서 사라졌으면 기본값으로 되돌린다.
+  if (modelSelect.value !== chatModel) {
+    chatModel = '';
+    modelSelect.value = '';
+  }
   effortSelect.value = chatEffort;
 
   // Codex 모델 목록을 CLI 캐시에서 동적으로 채운다 (실패 시 HTML 기본 목록 유지).
