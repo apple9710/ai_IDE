@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, clipboard } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, clipboard, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
@@ -179,6 +179,12 @@ ipcMain.handle('clipboard:writeText', (_e, text) => {
   } catch {
     /* ignore */
   }
+  return { ok: true };
+});
+
+// 채팅 마크다운 링크를 기본 브라우저로 연다. http(s)만 허용.
+ipcMain.handle('shell:openExternal', (_e, url) => {
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url);
   return { ok: true };
 });
 

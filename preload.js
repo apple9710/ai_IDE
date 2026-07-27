@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld('api', {
   watchFolder: (folder) => ipcRenderer.invoke('fs:watch', folder),
   unwatchFolder: (folder) => ipcRenderer.invoke('fs:unwatch', folder),
   onFsChanged: (cb) => ipcRenderer.on('fs:changed', (_e, p) => cb(p)),
+  openExternal: (url) => ipcRenderer.invoke('shell:openExternal', url),
 
   // git
   gitStatus: (folder) => ipcRenderer.invoke('git:status', folder),

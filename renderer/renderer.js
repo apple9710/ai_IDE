@@ -1218,17 +1218,177 @@ function esc(s) {
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
-function renderMd(text) {
-  let html = esc(text);
-  html = html.replace(
-    /```(\w*)\n?([\s\S]*?)```/g,
-    (_, lang, code) => `<pre><code>${code.replace(/\n$/, '')}</code></pre>`
+
+// 인라인 마크다운: 코드 → 굵게 → 기울임 → 취소선 → 링크 순.
+// 인라인 코드는 먼저 자리표시자로 빼서 내부가 다른 규칙에 안 걸리게 한다.
+function mdInline(s) {
+  const codes = [];
+  s = s.replace(/`([^`\n]+)`/g, (_, c) => {
+    codes.push(c);
+    return '\u0000' + (codes.length - 1) + '\u0000';
+  });
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+  s = s.replace(
+    /\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
+    '<a class="md-link" href="$2">$1</a>'
   );
-  html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-  return html;
+  return s.replace(/\u0000(\d+)\u0000/g, (_, n) => `<code>${codes[n]}</code>`);
 }
+
+// 채팅용 미니 마크다운 렌더러 — 코드블록·제목·목록·표·인용·구분선·링크 등
+// 표시에 필요한 만큼만 지원. esc()로 전부 이스케이프한 뒤 태그를 더하는
+// 방식이라 원문에 섞인 HTML은 실행되지 않는다.
+function renderMd(text) {
+  const lines = esc(text).split('\n');
+  const out = [];
+  let i = 0;
+  const isBlank = (l) => !l.trim();
+  const LIST_RE = /^(\s*)(?:([-*+])|(\d+)[.)])\s+(.*)$/;
+  const checkbox = (s) =>
+    s.replace(/^\[( |x|X)\]\s+/, (_, c) => (c === ' ' ? '☐ ' : '☑ '));
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    if (isBlank(line)) {
+      i++;
+      continue;
+    }
+
+    // ``` 코드블록
+    if (/^```/.test(line)) {
+      const buf = [];
+      i++;
+      while (i < lines.length && !/^```\s*$/.test(lines[i])) buf.push(lines[i++]);
+      i++; // 닫는 펜스(또는 EOF)
+      out.push(`<pre><code>${buf.join('\n')}</code></pre>`);
+      continue;
+    }
+
+    // 제목 (h5~h6은 h4로 뭉갠다 — 채팅 폭에선 구분이 무의미)
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if (h) {
+      const lv = Math.min(h[1].length, 4);
+      out.push(`<h${lv}>${mdInline(h[2])}</h${lv}>`);
+      i++;
+      continue;
+    }
+
+    // 구분선
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+      out.push('<hr>');
+      i++;
+      continue;
+    }
+
+    // 인용 (esc 후라 >는 &gt;)
+    if (/^&gt;\s?/.test(line)) {
+      const buf = [];
+      while (i < lines.length && /^&gt;\s?/.test(lines[i]))
+        buf.push(lines[i++].replace(/^&gt;\s?/, ''));
+      out.push(`<blockquote>${mdInline(buf.join('<br>'))}</blockquote>`);
+      continue;
+    }
+
+    // 표 — 현재 줄에 |가 있고 다음 줄이 |---|--- 구분 행일 때
+    if (
+      line.includes('|') &&
+      i + 1 < lines.length &&
+      /^\s*\|?[\s:|-]+-[\s:|-]*$/.test(lines[i + 1]) &&
+      lines[i + 1].includes('-')
+    ) {
+      const row = (l) =>
+        l
+          .replace(/^\s*\|/, '')
+          .replace(/\|\s*$/, '')
+          .split('|')
+          .map((c) => c.trim());
+      const ths = row(line)
+        .map((c) => `<th>${mdInline(c)}</th>`)
+        .join('');
+      i += 2;
+      const trs = [];
+      while (i < lines.length && lines[i].includes('|') && !isBlank(lines[i])) {
+        trs.push(
+          '<tr>' +
+            row(lines[i])
+              .map((c) => `<td>${mdInline(c)}</td>`)
+              .join('') +
+            '</tr>'
+        );
+        i++;
+      }
+      out.push(
+        `<table><thead><tr>${ths}</tr></thead><tbody>${trs.join('')}</tbody></table>`
+      );
+      continue;
+    }
+
+    // 목록 — 들여쓰기 한 단계 중첩 지원, 체크박스([ ]/[x]) 표시
+    if (LIST_RE.test(line)) {
+      const items = [];
+      while (i < lines.length && LIST_RE.test(lines[i])) {
+        const m = lines[i].match(LIST_RE);
+        items.push({
+          depth: m[1].length >= 2 ? 1 : 0,
+          ordered: !!m[3],
+          num: m[3],
+          text: m[4],
+        });
+        i++;
+      }
+      const tag = (o) => (o ? 'ol' : 'ul');
+      const top = items[0];
+      let html = `<${tag(top.ordered)}${
+        top.ordered && top.num !== '1' ? ` start="${top.num}"` : ''
+      }>`;
+      let j = 0;
+      while (j < items.length) {
+        let inner = mdInline(checkbox(items[j].text));
+        j++;
+        if (j < items.length && items[j].depth === 1) {
+          const sub = items[j];
+          inner += `<${tag(sub.ordered)}>`;
+          while (j < items.length && items[j].depth === 1)
+            inner += `<li>${mdInline(checkbox(items[j++].text))}</li>`;
+          inner += `</${tag(sub.ordered)}>`;
+        }
+        html += `<li>${inner}</li>`;
+      }
+      html += `</${tag(top.ordered)}>`;
+      out.push(html);
+      continue;
+    }
+
+    // 문단 — 빈 줄이나 다른 블록 요소 전까지 이어 붙인다
+    const buf = [line];
+    i++;
+    while (
+      i < lines.length &&
+      !isBlank(lines[i]) &&
+      !/^```|^#{1,6}\s|^&gt;\s?|^\s*([-*+]|\d+[.)])\s/.test(lines[i])
+    ) {
+      buf.push(lines[i]);
+      i++;
+    }
+    out.push(`<p>${mdInline(buf.join('<br>'))}</p>`);
+  }
+  return out.join('');
+}
+
+// 마크다운 링크는 앱 안에서 열지 않고 기본 브라우저로 보낸다.
+document.addEventListener('click', (e) => {
+  const a = e.target && e.target.closest ? e.target.closest('a.md-link') : null;
+  if (!a) return;
+  e.preventDefault();
+  window.api.openExternal(a.getAttribute('href'));
+});
 function clearEmpty(p, el) {
   const empty = (el || p.chatEl).querySelector('.chat-empty');
   if (empty) empty.remove();
@@ -1496,7 +1656,10 @@ window.api.onAgentMessage(({ projectId, message: m }) => {
         ev.delta &&
         ev.delta.type === 'text_delta'
       ) {
-        ensureAssistant(p).textEl.textContent += ev.delta.text;
+        // 스트리밍 중에도 마크다운을 적용한다 — 누적 원문을 매번 다시 렌더.
+        const a = ensureAssistant(p);
+        a.raw = (a.raw || '') + ev.delta.text;
+        a.textEl.innerHTML = renderMd(a.raw);
         scrollChat(p);
       }
       break;
@@ -1782,7 +1945,7 @@ function renderCodexItem(p, item, done) {
         entry.textEl.innerHTML = renderMd(item.text || '');
         addCopyBtn(entry.el, item.text || '');
       } else {
-        entry.textEl.textContent = item.text || '';
+        entry.textEl.innerHTML = renderMd(item.text || '');
       }
       break;
     }
